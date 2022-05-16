@@ -1,5 +1,5 @@
 ---
-title: "How to perform RNA-sequencing"
+title: "How to perform RNA-sequencing\n"
 subtitle: "Technology report - 4 hp"
 author: "Simone Zaghen"
 date: "`r format(Sys.time(), '%d %B, %Y')`"
@@ -18,16 +18,27 @@ knit: (function(inputFile, encoding) {
   rmarkdown::render(inputFile, encoding = encoding, output_dir = "../results/Reports") })
 
 ---
+\newpage
 
 # Introduction
-This advanced technology report describes a limma-based procedure to analyze RNA sequencing data and extract gene-level statistics to perform gene set analysis using the PIANO (<b>P</b>latform for <b>i</b>ntegrative <b>an</b>alysis of <b>o</b>mics data) approach. After a general introduction on RNA-sequencing principles and gene set analysis, the code used to perform the analysis will be described step by step. The procedure is based on <i<Y. lipolitica</i> but can be easily adjusted to different organisms as well. All the code is available on github at the following directory: <b> INSERT DIRECTORY HERE </b>. 
+This advanced technology report describes a limma-based procedure to analyze RNA sequencing data and extract gene-level statistics to perform gene set analysis using the PIANO (**P**>latform for **i**ntegrative **an**alysis of **o**mics data) approach. The report is mainly focused on the analysis performed after generating a gene-count file. How to map the reads to a reference genome will be briefly discussed in the introduction from a theoretical point of view, but no code will be shown or discussed. After a general introduction on RNA-sequencing principles and gene set analysis, the code used to perform the analysis will be described and explained step by step. The procedure and results are based on *Y. lipolitica* but can be easily adjusted to different organisms as well. All the code is available on GitHub [in this directory](https://github.com/Simoza/RNA-seq_TechnologyReport).
 
 # RNA-sequencing principles
+https://www.ncbi.nlm.nih.gov/pmc/articles/PMC2949280/
+RNA-sequencing is a sequencing technique that aims to sequence and quantify the transcriptome of a cell. The transcriptome is the complete set of transcripts in a cell, and their quantity, for a specific developmental stage or physiological condition. Understanding the transcriptome is essential for interpreting the functional elements of the genome and revealing the molecular constituents of cells and tissues, and also for understanding development and disease. The key aims of transcriptomics are: to catalogue all species of transcript, including mRNAs, non-coding RNAs and small RNAs; to determine the transcriptional structure of genes, in terms of their start sites, 5′ and 3′ ends, splicing patterns and other post-transcriptional modifications; and to quantify the changing expression levels of each transcript during development and under different conditions.
+
+RNA-Seq uses recently developed deep-sequencing technologies. In general, a population of RNA (total or fractionated, such as poly(A)+) is converted to a library of cDNA fragments with adaptors attached to one or both ends (FIG. 1). Each molecule, with or without amplification, is then sequenced in a high-throughput manner to obtain short sequences from one end (single-end sequencing) or both ends (pair-end sequencing).The reads are typically 30–400 bp, depending on the DNA-sequencing technology used.
+
+Following sequencing, the resulting reads are either aligned to a reference genome or reference transcripts, or assembled de novo without the genomic sequence to produce a genome-scale transcription map that consists of both the transcriptional structure and/or level of expression for each gene
 
 
-# Gene set analysis principles
 
-
+### Isolation of RNA
+### Library preparation methods 
+### Sequencing
+### Alignment to reference genome
+### Differencial gene expression analysis
+### Gene set analysis principles
 # RNA-seq analysis pipeline
 ## Install the required packages
 \
@@ -61,7 +72,6 @@ if (!dir.exists("../results/")){dir.create("../results/")}
 ```
 \
 ## Preprocessing
-
 ### Load the data
 
 ```{r}
@@ -80,6 +90,7 @@ rm("metadata", "cols") #remove dataframe used to add the metadata
 ```
 
 ### Filter low reads
+explain why to filter low reads: cause you can't really do statistics on them since the counts are too low. 
 
 ```{r, warning=FALSE,fig.width=10, fig.height=5}
 #Normalize for library size, by taking the log count-per-million. It's not a satisfactory normalization, but we just use it to plot raw reads
@@ -119,12 +130,7 @@ for (i in 2:nsamples) {
 
 #Filter with filterByExpr function
 keep.exprs2 <- filterByExpr(x, group = x$samples$group,
-                            lib.size = x$samples$lib.size,
-                            #min.count = 5,
-                            #min.total.count = 5,
-                            #large.n = 5,
-                            #min.prop = 0.01)
-                           )
+                            lib.size = x$samples$lib.size)
 x_Filtered_2 <- x[keep.exprs2, keep.lib.sizes = FALSE]
 
 lcpm <- cpm(x_Filtered_2, log = T)
@@ -150,6 +156,7 @@ Dimension after filterByExpr (genes, samples): `r dim(x_Filtered_2)`
 Decided to continue working with data filtered with filterByExpr ("x_Filtered_2).  
   
 ### Normalize gene counts
+Explain the different normalization methods (lcpm, rpkm, etc) and explain why they are problematic and why TMM was introduced
 
 ```{r, fig.width=15, fig.height=16}
 #Decided to continue working with data filtered with filterByExpr ("x_Filtered_2)
@@ -221,7 +228,7 @@ title(main = "D. All Samples by DR")
 
 In this branch of the project, we decided to investigate the influence of the nitrogen source on OKYL029, OKYL049, and JFYL007. The PCA shows little separation based on nitrogen source, and we think this is an interesting results since urea is a viable nitrogen source that is used in many studies. From an industrial point of view, urea is also cheaper than ammonium sulphate. 
 
-# Ammonium sulphate vs Urea
+## Ammonium sulphate vs Urea
 
 Perform differential gene expression analysis on a subset of samples.
 
