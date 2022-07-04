@@ -1,0 +1,9 @@
+﻿Library design;Usage;Description
+Poly-A selection;Sequencing mRNA;Select for RNA species with poly-A tail and enriches for mRNA
+Ribo-depletion;Sequencing mRNA, pre-mRNA, ncRNA;Removes ribosomal RNA and enriches for mRNA, pre-mRNA, and ncRNA
+Size selection;Sequencing miRNA;Selects RNA species using size fractionation by gel electrophoresis
+Duplex-specific nuclease;Reduce highly abundant transcripts;Cleaves highly abundant transcripts, including rRNA and other highly expressed genes
+Strand-specific;De novo transcriptome assembly;Preserves strand information of the transcript
+Multiplexed;Sequencing multiple samples together;Genetic barcoding method that enables sequencing multiple samples together
+Short-read;Higher coverage;"Produces 50–100 bp reads; generally higher read coverage and reduced error rate compared to long-read sequencing"
+Long-read;De novo transcriptome assembly;"Produces >1000 bp reads; advantageous for resolving splice junctions and repetitive regions"
