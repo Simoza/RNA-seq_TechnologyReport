@@ -73,19 +73,23 @@ The sequencing industry has been dominated by Illumina, which applies an ensembl
 
 There are many steps separating the RNA sequencing and the generation of the gene count file. These steps will be described briefly, but more literature and documentation can be found [here](https://github.com/nf-core/rnaseq) and [here](https://training.galaxyproject.org/training-material/topics/transcriptomics/tutorials/rna-seq-reads-to-counts/tutorial.html).
 
-The analysis begins with the generation of the sequencing reads. For each sample the output  is a single FASTQ file if performing single-end sequencing, or two FASTQ files for double-end sequencing. A FASTQ file is a text-based file format for storing both a nucleotide sequence and its corresponding quality scores for the sequencing. After obtaining FASTQ files, the first step is performing quality control on the reads. During sequencing, errors might be introduced, such as incorrect nucleotides. Every base sequence gets a quality score from the sequencer and this information is present in the FASTQ file. At this step, the base quality of all samples should be checked. It is also necessary to check if the Illumina adapters have been  sequenced. To perform this step the [FastQC](https://www.bioinformatics.babraham.ac.uk/projects/fastqc/) or [MultiQC](https://github.com/ewels/MultiQC) packages can be used. In case adapters have been sequenced, it is necessary to trim the reads to remove the  adapter and to remove any low quality bases at the ends of the read. Sequences that will be too short ( usually < 20bp) will be discarded. This step can be performed with [Trim Galore](https://github.com/FelixKrueger/TrimGalore). 
-
-<!-- fastQC works both for nucleotide sequence quality and to check for adapters, but I understand that you use fastQC only to check for adapters and it is a different step (maybe I am misunderstanding) -->
+The analysis begins with the generation of the sequencing reads. For each sample the output  is a single FASTQ file if performing single-end sequencing, or two FASTQ files for double-end sequencing. A FASTQ file is a text-based file format for storing both a nucleotide sequence and its corresponding quality scores for the sequencing. After obtaining FASTQ files, the first step is performing quality control on the reads. During sequencing, errors might be introduced, such as incorrect nucleotides. Every base sequence gets a quality score from the sequencer and this information is present in the FASTQ file. At this step, the base quality of all samples should be checked. It is also necessary to check if the Illumina adapters have been  sequenced. To perform these two steps the [FastQC](https://www.bioinformatics.babraham.ac.uk/projects/fastqc/) or [MultiQC](https://github.com/ewels/MultiQC) packages can be used. In case adapters have been sequenced, it is necessary to trim the reads to remove the  adapter and to remove any low quality bases at the ends of the read. Sequences that will be too short ( usually < 20bp) will be discarded. This step can be performed with [Trim Galore](https://github.com/FelixKrueger/TrimGalore). 
 
 After these preprocessing steps, the reads can be aligned. For *Y. lipolytica* and *S. cerevisiae* reference genomes that can be used to map the reads are available. To perform the alignment [STAR](https://github.com/alexdobin/STAR) can be used. The alignment produces a set of BAM files, where each file contains the chromosomal location for every read that was mapped. The mapped reads can now be counted across genes by using a tool called [Salmon](https://github.com/COMBINE-lab/salmon) that quantifies the reads mapped to exons and produces the read count for each gene.
 
-<!-- Normally, you get a BAM file first, and then these are converted to BAM files. It is my understanding that STAR can output directly into sorted BAM files. So, perhaps you could mention this  -->
-
 # Differential gene expression analysis
 
-<!-- Maybe you can describe your experiment a little bit, and what you are looking for -->
+Differential gene expression analysis consists in taking the normalized read count data and performing statistical analysis to discover quantitative changes in expression levels between experimental groups. To describe the workflow I will use RNA-seq data that I collected from chemostats experiments. Briefly, we performed several chemostat runs to study differences in phenotype related to four factors: 
 
-I will now describe all the steps required to perform differential gene expression analysis. Differential gene expression analysis consists in taking the normalized read count data and performing statistical analysis to discover quantitative changes in expression levels between experimental groups.
+1. **Strain**: we tested three *Y. lipolytica* strains, one wild-type (OKYL029), one lipid accumulator (OKYL049), and a lipid-free strain (JFYL007).
+
+2. **C/N ratio**: *Y.lipolytica* accumulates lipids when the nitrogen becomes limiting (high carbon-to-nitrogen ratio). We tested a high (116) and a low (3) C/N ratio) to assess differences in cell phenotype, organization, metabolism, and transcriptome related to the lipid accumulation capacity of different strains.
+
+3. **Dilution rate**: the dilution rate expresses the relation between the flow of medium into the bioreactor and the culture volume within it. In a chemostat cultivation the volume is kept constant, and the dilution rate influences the rate to which cells get fresh media, in turn influencing the growth rate. We tested two dilution rates, 0.06, in which the flow of fresh media is low and results in lower growth rate, and 0.1, in which the media is fed at a higher rate, resulting in higher growth rates. 
+
+4. Nitrogen source: ammonium sulphate is a widely used nitrogen source for the cultivation of microorganisms; urea is a sustainable and cheap alternative nitrogen source. We investigated the influence of urea as a nitrogen source compared to ammonium sulphate.
+
+For each condition we ran quadruplicates and sent triplicates for RNA-seq. For simplicity the workflow presented only takes the strain factor into account, but the analysis can easily be extended to other factors. 
 
 ## Install the required packages
 
@@ -185,9 +189,13 @@ The multiple testing burden arise when a statistical analysis involves multiple 
 
 To remove genes with low reads, it is necessary to perform a filtering step before continuing with the analysis. The filtering step cannot be performed on raw read counts since raw read counts do not account for different library sizes. There are several ways to account for library sizes, some of which also account for gene length, since longer genes have higher probability of having more reads mapped to them. Even though the methods that account for both library size and gene length are more accurate, we will use the log<sub>2</sub>-CPM (log<sub>2</sub> count per million) values that only account for library size, mainly for two reasons. First, since log<sub>2</sub>-CPM only account for library size, we don't need to feed information about the length of each gene in the dataset; the counts matrix alone is sufficient to calculate log<sub>2</sub>-CPM. Second, since the gene lengths remain constant among samples because we are comparing the same organism, any observed differences are a result of changes in condition rather than changes in gene length.
 
-Therefore, we first convert raw gene counts to log<sub>2</sub>-CPM to account for differences in sequencing depth between samples, and then we perform a filtering step with the function "filterByExpr". Quoting the [function documentation](https://rdrr.io/bioc/edgeR/man/filterByExpr.html), "the filterByExpr function keeps genes that have worthwhile counts in a minimum number of samples". In our case the minimum number of samples is at least three samples since the smallest group size is three. The function accesses the group factor contained in the DGEList in order to compute the minimum group size, but the filtering is performed independently of which sample belongs to which group so that no bias is introduced. After determining the minimum group size, the function calculates the median library size and uses that value to determine a CPM.Cutoff. The CPM.Cutoff is defined as the ratio between the min.count (default at 10) adjusted to 10<sup>6</sup> to convert to count-per-million, and the median library size. Calculated this parameter, the function computes the rowsum of the counts of each gene and only keeps those genes whose sum is above the CPM.Cutoff in at least the min sample size (in our case in at least three samples). 
+Therefore, we first convert raw gene counts to log<sub>2</sub>-CPM to account for differences in sequencing depth between samples, and then we perform a filtering step with the function "filterByExpr". Quoting the [function documentation](https://rdrr.io/bioc/edgeR/man/filterByExpr.html), "the filterByExpr function keeps genes that have worthwhile counts in a minimum number of samples":
 
-<!-- maybe you can add a figure here to be clear about how you filter out low counts  -->
+* The function accesses the group factor contained in the DGEList (x\$samples\$group) in order to compute the minimum group size, but the filtering is performed independently of which sample belongs to which group so that no bias is introduced. In our case, x\$samples\$group is a factor with 15 levels, and each levels contains three samples, so the minimum number of samples is three since the smallest group size is three.
+
+*After determining the minimum group size, the function calculates the median library size (median(x\$lib.size)) and uses that value to determine a CPM.Cutoff. The CPM.Cutoff is defined as the ratio between the min.count (default at 10) adjusted to 10<sup>6</sup> to convert to count-per-million, and the median library size. 
+
+* Calculated the CPM.Cutoff, the function only keeps those genes for which at least 3 samples (minimum group size) have a CPM value higher than the CPM-Cutoff.
 
 ```{r, warning=FALSE,fig.width=10, fig.height=5}
 lcpm <- cpm(x, log = T) #Normalize for library size (logCPM)
@@ -239,25 +247,16 @@ rm(list=ls()[!(ls() %in% c("gene_counts", "x_Filtered", "lcpm_x_Filtered"))]) #c
 ### Normalize gene counts
 Now it is necessary to normalize the gene counts before making comparisons of expression between samples. The gene counts are proportional to the expression levels of RNA, but are also influenced by other factors such as sequencing depth, gene length, and RNA composition. One approach to correct for these factors is with TMM normalization (*T*rimmed *M*ean of *M*-values). TMM normalization is a between-sample normalization method: the main goal is to account for library size variation between samples of interest, accounting for the fact that some extremely differentially expressed genes would impact negatively the normalization procedure. To correct for this TMM assumes that most of the genes are not differentially expressed between samples. Therefore, the normalization is performed after calculating a trimmed mean, i.e. the average after removing the upper and lower x% of the data [Robinson, M.D., Oshlack, A. (2010)](https://genomebiology.biomedcentral.com/articles/10.1186/gb-2010-11-3-r25). The goal of the TMM normalization is to perform comparisons between the same genes in different samples. Since same genes in different samples are assumed to have the same length, this normalization method does not take into account gene length. 
 
-
-<!-- are the boxplots here necesary ? I saw you change the visibility of the outline. -->
-
-
-```{r, fig.show='hide'}
-
+```{r fig.width=10, fig.height=4, echo=FALSE}
 x_Filtered_TMM <- calcNormFactors(x_Filtered, method = "TMM") #TMM normalization (trimmed mean of M-values)
-
-#boxplot to check effect normalization
-lcpm_x_Filtered_TMM <- cpm(x_Filtered_TMM, log = TRUE) #calculate lcpm normalized data
-par(mfrow=c(1,2), mar = c(6,2,2,2))
-boxplot(lcpm_x_Filtered, las= 3, outline = TRUE, main = "Not normalized", ylab = expression("log"[2]*"CPM"))
-boxplot(lcpm_x_Filtered_TMM, las = 3, outline = TRUE, main = "Normalized", ylab = expression("log"[2]*"CPM"))
 
 ```
 
 We can check the effect of the normalization in a boxplot:
 
 ```{r fig.width=10, fig.height=4, echo=FALSE}
+#boxplot to check effect normalization
+lcpm_x_Filtered_TMM <- cpm(x_Filtered_TMM, log = TRUE) #calculate lcpm normalized data
 par(mfrow=c(1,2), mar = c(6,2,2,2))
 boxplot(lcpm_x_Filtered, las= 3, outline = FALSE, main = "Not normalized", ylab = expression("log"[2]*"CPM"))
 boxplot(lcpm_x_Filtered_TMM, las = 3, outline = FALSE, main = "Normalized", ylab = expression("log"[2]*"CPM"))
@@ -393,17 +392,15 @@ vfit <- eBayes(vfit)
 
 ```
 
-For a quick look at differential expression levels, the number of significantly up- and down-regulated genes can be summarized in a table. The default significance cutoff is based on adjusted p value and is set at 5%.
+For a quick look at differential expression levels, the number of significantly up- and down-regulated genes can be summarized in a table. The default significance cutoff is based on adjusted p value and is set at 5%. 
 
 ```{r, results='hide'}
-summary(decideTests(vfit))
+summary(decideTests(vfit, adjust.method = "BH", p.value = 0.01, lfc = 1))
 
 ```
 
-<!-- Here (summary) you show the data based on the adjusted p-value, but you use a different setting in the volcano plot, also here it seems to use zero as the fold change, but in the volcano there is a cutoff of 1 -->
-
 ```{r, echo = FALSE}
-t <- (summary(decideTests(vfit)))
+t <- summary(decideTests(vfit, adjust.method = "BH", p.value = 0.01, lfc = 1))
 rownames(t) <- c("Downregulated", "Non significant", "Upregulated")
 kable(t) %>%
   kable_styling(bootstrap_options = "striped", 
@@ -455,21 +452,17 @@ for (i in 1:ncol(contrast.matrix)) {
 
 ### Volcano plot
 
-<!-- I think you should use the adjusted p-value instead of the p-value. -->
-
 One way of visualizing the results of a differential gene expression analysis is through a volcano plot. A volcano plot is a type of scatter plot that is constructed by plotting the negative logarithm of the adjusted p-value on the y axis and the logarithm of the fold change on the x axis. This results in data points with significant p values towards the top of the plot, and with larger fold change differences to the far-left (negative fold change) or far-right (positive fold change) side of the plot. 
 
 As you can see, the comparison JFYL007vs OKYL029 is shows more differentially expressed genes than the comparison OKYL049vsOKYL029. This is expected: in the PCA plot, the strain JFYL007 was clustering further away from OKYL029 than OKYL049. Furthermore, we already noticed this in the summary table in paragraph 3.4.4. 
 
-<!-- why you use this chunk (27) and then repeat the code to plot (next chunk) just in another way ? If it is because you want to put it together you can change the configutation to {r, figures-side, fig.show="hold", out.width="50%" } -->
-
-```{r, fig.show='hide', warning=FALSE}
+```{r, figures-side, fig.show="hold", out.width="50%", fig.show='hide', warning=FALSE}
 
 for (i in 1:length(comparison_list)) {
         plot <- EnhancedVolcano(comparison_list[[i]],
                         lab = NA,
                         x = "logFC",
-                        y = "P.Value",
+                        y = "adj.P.Val",
                         pCutoff = 0.01,
                         FCcutoff = 1,
                         ylim = c(0,15),
@@ -483,34 +476,6 @@ for (i in 1:length(comparison_list)) {
 
 ```
 
-```{r, echo = FALSE, fig.width=14, fig.height=6, warning=FALSE}
-        p1 <- EnhancedVolcano(comparison_list[[1]],
-                        lab = NA,
-                        x = "logFC",
-                        y = "P.Value",
-                        pCutoff = 0.01,
-                        FCcutoff = 1,
-                        ylim = c(0,15),
-                        title = paste0(names(comparison_list[1])),
-                        subtitle = NULL,
-                        xlim = c(-6,6),
-                        )
-        p2 <- EnhancedVolcano(comparison_list[[2]],
-                        lab = NA,
-                        x = "logFC",
-                        y = "P.Value",
-                        pCutoff = 0.01,
-                        FCcutoff = 1,
-                        ylim = c(0,15),
-                        title = paste0(names(comparison_list[2])),
-                        subtitle = NULL,
-                        xlim = c(-6,6),
-                        )
-
-grid.arrange(p1,p2, ncol=2, nrow=1)
-
-```
-
 # Gene set analysis
 Extracting biological information from a volcano plot or from a result list with p-values and fold changes is quite challenging. Even comparisons between strains that are quite similar can yield hundreds of differentially expressed genes. Manually examining all the genes would be quite time consuming, and the interpretation would be highly dependent on the scientist's area of expertise. Furthermore, gene-wise analysis fail to give a global overview of which cell components, processes, functions, or pathways are differentially regulated between the cell-types being studied. 
 
@@ -520,13 +485,11 @@ To overcome these challenges, Gene Set Analysis (GSA) was developed. In a GSA, t
 rm(list=ls()[!(ls() %in% c("comparison_list"))]) #clean the working environment
 ```
 
-
 ## Load required functions
 
 ```{r, warning=FALSE}
 source('../code/Functions/consGSA.R')
 source('../code/Functions/consGSAplot.R')
-source('../code/Functions/consGSAtable.R')
 
 ```
 
@@ -598,98 +561,52 @@ for (i in 1:length(names(comparison_list))) {
 
 ```
 
-After running a consensus GSA, it is possible to summarize the results in a consensus plot, by running the consGSAplot function. For each comparison that we performed, this function creates a plot showing the gene sets that show most significant changes, as identified from consensus GSA. For the highest ranking gene sets, a bar chart is plotted showing how many genes of that gene set are up- or down regulated. To signify which genes have significantly changed expression a p-value cutoff is used.
-
- <!-- why is a different cutoff used here than the value used in the volcano plot ? -->
+After running a consensus GSA, it is possible to summarize the results in a consensus plot, by running the consGSAplot function. For each comparison that we performed, this function creates a plot showing the gene sets that show most significant changes, as identified from consensus GSA. For the highest ranking gene sets, a bar chart is plotted showing how many genes of that gene set are up- or down regulated. To signify which genes have significantly changed expression a p-value cutoff is used. The data used to generate the bar plots are saved in a table and available for further inspection. The table is saved in `comparison name --> GSA level --> df`
 
 ```{r, warning=FALSE, results='hide', message=FALSE, fig.height=15, fig.width=10}
 Pcutoff <- 0.01 #set p value cutoff
-consGSA_plot <- list() #create list in which to save the graphs
+consGSA_plot_data <- list() #create list in which to save the graphs
 
-#generate the graphs and save them in the list
+#generate the graphs and save them in the list, along with the data to generate them
 for (i in 1:length(GSA_results)) { #loop through all the GSAs we have
-  consGSA_plot[[i]] <- list( #the results will be saved in a list
+  consGSA_plot_data[[i]] <- list( #the results will be saved in a list
     BP = consGSAplot(resList = GSA_results[[i]][[1]], #create the consensous plot for BP
                      rankScore = 25, 
                      Pcutoff = Pcutoff, 
                      distinct = 'distinct', 
-                     savePlot = FALSE, 
                      title = paste0("Biological Process - rankScore 25", " ,pval < ", Pcutoff)),
     
     MF = consGSAplot(resList =  GSA_results[[i]][[2]], #create the consensous plot for MF
                      rankScore = 25, 
                      Pcutoff = Pcutoff, 
                      distinct = 'distinct', 
-                     savePlot = FALSE, 
                      title = paste0("Molecular Function - rankScore 25" , " ,pval < ", Pcutoff)),
 
     CC = consGSAplot(resList = GSA_results[[i]][[3]], #create the consensous plot for CC
                      rankScore = 25, 
                      Pcutoff = Pcutoff, 
                      distinct = 'distinct', 
-                     savePlot = FALSE, 
                      title = paste0("Cellular Component - rankScore 25", " ,pval < ", Pcutoff))
   )
   
-  names(consGSA_plot)[i] <- names(GSA_results)[i] #assign the names to the list of graphs
+  names(consGSA_plot_data)[i] <- names(GSA_results)[i] #assign the names to the list of graphs
   
-    #For each comparison arrange the three (BP, MF,CC) graphs
-    Figure <- ggarrange(consGSA_plot[[i]][[1]], 
-                        consGSA_plot[[i]][[2]], 
-                        consGSA_plot[[i]][[3]], 
+    #For each comparison arrange the three (BP, MF,CC) graphs and print the final plot
+    print(ggarrange(consGSA_plot_data[[i]][["BP"]][["plot"]], 
+                        consGSA_plot_data[[i]][["MF"]][["plot"]], 
+                        consGSA_plot_data[[i]][["CC"]][["plot"]], 
                         ncol=1, 
                         nrow=3, 
                         common.legend = TRUE, 
-                        legend = "bottom") 
-    #Annotate the arranged graph
-    Figure <- annotate_figure(Figure, top = text_grob((names(comparison_list)[i]), 
-                                              color = "red", face = "bold", size = 18))
-
-    print(Figure) #print the graph
-}
-
-```
-
-The output of the conGSAplot function is a figure with three panels. Each panel shows one level of the gene set analysis (biological process, molecular function, cellular component). In each panel the most important GO terms are reported. Each GO term is associated with a rank score which indicates how important the GO term is (the lower the better), and the total amount of genes contained that GO term. The bars represent the percentage of genes that up-regulated or down-regulated in a GO term.
-
-<!-- Is the total number of genes the total number of genes based on your RNA-seq data or based on the downloaded gene set data? -->
-
-```{r, echo=FALSE}
-rm(Figure) #clean workspace
-
-```
-
-<!-- why not export the data in the previous step? it seems like a repetition here  -->
-
-Finally, the data we used to generate the bar plots can be save in a table if needed for further inspection.
-
-```{r, warning=FALSE, message=FALSE}
-consGSA_plot_table <- list() #Create list to store results used to make the plots
-
-#Save results used for plots in GSA_list
-for (i in 1:length(GSA_results)) {
-  consGSA_plot_table[[i]] <- list(
-
-    BP = consGSAtable(resList = GSA_results[[i]][[1]], 
-                       rankScore = 25,
-                       Pcutoff = Pcutoff, 
-                       distinct = 'distinct'),
-    
-    MF = consGSAtable(resList = GSA_results[[i]][[2]], 
-                       rankScore = 25,
-                       Pcutoff = Pcutoff, 
-                       distinct = 'distinct'),
-    
-    CC = consGSAtable(resList = GSA_results[[i]][[3]],
-                       rankScore=25,
-                       Pcutoff = Pcutoff, 
-                       distinct = 'distinct'))
-
-    names(consGSA_plot_table)[i] <- names(GSA_results)[i] #assign names to each element of the list
+                        legend = "bottom") %>%
+      annotate_figure(top = text_grob((names(comparison_list)[i]), 
+                                              color = "red", face = "bold", size = 18)))
 
 }
 
 ```
+
+The output of the conGSAplot function is a figure with three panels. Each panel shows one level of the gene set analysis (biological process, molecular function, cellular component). In each panel the most important GO terms are reported. Each GO term is associated with a rank score which indicates how important the GO term is (the lower the better), and the total amount of genes contained in that GO term. The bars represent the percentage of genes that up-regulated or down-regulated in a GO term.
 
 # Session Info
 

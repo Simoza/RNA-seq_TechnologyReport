@@ -1,19 +1,19 @@
 # Description:
-#     Performs consensus GSA using eight common (and relatively fast) methods that are
-#     included in Piano.
-#     Runs on maximum number of CPU nodes. Gives resList as output, which can be
-#     used to make a plot using consGSAplot.
+#     Performs consensus GSA using seven common (and relatively fast) methods that are included in Piano.
+#     Runs on maximum number of CPU nodes. 
+#     Gives resList as output, which can be used to make a plot using consGSAplot.
 #
 # Input:      TopTable  output from limma's topTable
 #             gsc       gene-set, as loaded using Piano
 #             nPerm     the number of permutations to use for gene sampling, default = 1000
 #             gsSizeDn  cutoff-value for minimum number of genes in gene-sets, default = 5
 #             gsSizeUp  cutoff-value for maximum number of genes in gene-sets, default = 500
+#             title     short title used in plot and filename
 #
 # Output:     resList   results list
-#
-# 2022-06-29  Simone Zaghen
-
+# 
+# 2021-03-24 Eduard Kerkhoven
+# 2022-06-29 Simone Zaghen
 
 consGSA <-
   function(TopTable,
@@ -22,12 +22,14 @@ consGSA <-
            gsSizeDn = 5,
            gsSizeUp = 500) 
 {
-    
+
+  suppressPackageStartupMessages({
     require(piano)
     require(parallel)
     require(snowfall)
     require(tidyr)
-    
+  })
+
   # Find out number of processor cores, run GSA on all cores.
     cores <- as.numeric(detectCores())
     nPerm = round(nPerm / cores) * cores
@@ -42,9 +44,9 @@ consGSA <-
   #Which GSA methods to run
     GSA_methods <- c("mean", "median", "sum", "stouffer", "tailStrength", "fisher", "maxmean")
 
-    resList <- list() #create list in which to store data
-  
   #Run consensous GSA  
+  resList <- list() #create list in which to store data
+
   for(i in 1:length(GSA_methods)){
     
     method <- GSA_methods[i] #select method to run
@@ -60,7 +62,7 @@ consGSA <-
                          ncpus = cores, 
                          verbose = FALSE)
         }
-      else {
+      else { #else statement to run the maxmean
         gsaRes <- runGSA(FC, 
                          geneSetStat = method, 
                          gsc = gsc, 
@@ -71,7 +73,6 @@ consGSA <-
           resList[[i]]<- gsaRes
         }
 
-    
     resList <-setNames(resList, GSA_methods)
     
   return(resList)

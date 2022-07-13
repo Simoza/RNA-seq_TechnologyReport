@@ -14,8 +14,6 @@
 #                       cutoffs. 'distinct' will give less results, but more clearly
 #                       up or down regulated. 'mixed' will give more results, but
 #                       this will also include GO-terms with mixed regulation.
-#             savePlot  true if plot should be saved as file, false if not
-#             title     short title used in plot and filename
 # Output:     plot      the plot
 #
 # 2018-03-13  Eduard Kerkhoven
@@ -27,116 +25,107 @@ consGSAplot <-
            rankScore,
            Pcutoff = 0.05,
            distinct = 'mixed',
-           savePlot = FALSE,
-           title = 'Consensus GSA barchart') {
-    library(ggplot2)
-    library(piano)
-    library(parallel)
-    library(snowfall)
-    library(tidyr)
-    library(scales)
+           title = 'Consensus GSA barchart'){
     
-    # Extract non-directional, distinct up and down genesets.
-    non <- consensusScores(resList, class = "non", plot = F)
-    df <- data.frame(Name=rownames(non$rankMat[non$rankMat[,1] < rankScore + 1,])) # Select any non-directional with rank =< rankScore.
+    suppressPackageStartupMessages({
+      require(ggplot2)
+      require(piano)
+      require(parallel)
+      require(snowfall)
+      require(tidyr)
+      require(scales)
+    })
     
-    # including the RankScore in the XXX to be able to plot the RankScore in the final figure as well
-    df4 <- data.frame(Name=rownames(non$rankMat[non$rankMat[,2] < rankScore + 1,])) #I had to change the 1 to a 2 here to fix my bug. 
-    rank <- as.data.frame(non$rankMat[non$rankMat[, "ConsScore"] < rankScore + 1 , , drop = F])
-    df4$rank <- rank$ConsScore
-    
-    colnames(df4) <- c("Name", "RankScore")
-    
-    Pval <- resList[[1]]$geneLevelStats
-    FC <- resList[[1]]$directions
-    GS <- resList[[1]]$gsc
-    
-    
-    if (distinct=='distinct') {
-      up <-
-        consensusScores(resList,
-                        class = "distinct",
-                        direction = "up",
-                        plot = F)
-      dn <-
-        consensusScores(resList,
-                        class = "distinct",
-                        direction = "down",
-                        plot = F)
-      non <-
-        non$rankMat[non$rankMat[, "ConsScore"] < rankScore + 1 , , drop = F]
-      dn <-
-        dn$rankMat[dn$rankMat[, "ConsScore"] < rankScore + 1, , drop = F]
-      up <-
-        up$rankMat[up$rankMat[, "ConsScore"] < rankScore + 1, , drop = F]
-      dn <- dn[rownames(dn) %in% rownames(non), , drop = F]
-      up <- up[rownames(up) %in% rownames(non), , drop = F]
+  non <- consensusScores(resList, class = "non", plot = F) # Extract non-directional
+
+    if (distinct=='mixed') { 
+      
+      #if mixed, select any non-directional with ConsScore =< rankScore.
+      df <- data.frame(Name=rownames(non$rankMat[non$rankMat[, "ConsScore"] <= rankScore,])) 
+
+      #if distinct, select up and down with rank score =< rankScore
+    } else { 
+      up <- consensusScores(resList, class = "distinct", direction = "up", plot = F)
+      dn <- consensusScores(resList, class = "distinct", direction = "down", plot = F)
+      
+      #fitler for ConsScore <= rankScore
+      dn <- dn$rankMat[dn$rankMat[, "ConsScore"] <= rankScore, , drop = F]
+      up <- up$rankMat[up$rankMat[, "ConsScore"] <= rankScore, , drop = F] 
+      
+      #remove non-directional
+      to_keep <- rownames(non$rankMat[non$rankMat[, "ConsScore"] <= rankScore, , drop = F])
+      dn <- dn[rownames(dn) %in% to_keep, , drop = F]
+      up <- up[rownames(up) %in% to_keep, , drop = F]
       
       df <- data.frame(Name = unique(c(rownames(up), rownames(dn))))
     }
     
-    sumTable<-data.frame(Name=names(resList[[1]]$gsc), up=resList[[1]]$nGenesUp, dn=resList[[1]]$nGenesDn, tot=resList[[1]]$nGenesTot)
-    df <- merge(df, sumTable)
-    df <- merge(df,df4)
-    colnames(df) <- c("geneset", "up", "dn", "tot", "rank")
+  #extract number of up, down, and total genes in each geneset
+  sumTable <- data.frame(Name = names(resList$mean$gsc),
+                         up = resList$mean$nGenesUp, 
+                         dn = resList$mean$nGenesDn, 
+                         tot = resList$mean$nGenesTot)
     
-    df$highup <- 0
-    df$highdown <- 0
-    df$lowup <- 0
-    df$lowdown <- 0
+  df <- merge(df, sumTable) #merge the two dataframes, only keeping common elements
     
-    tmp <- GS[names(GS) %in% df$geneset]
-    tmp <- tmp[order(names(tmp))]
+  #include the RankScore value
+  df_rankScore <- data.frame(Name=rownames(non$rankMat[non$rankMat[, "ConsScore"] <= rankScore,]),
+                             RankScore = non$rankMat[non$rankMat[, "ConsScore"] <= rankScore, , drop = F][, "ConsScore"])
+  rownames(df_rankScore) <- NULL
     
-    for (gset in 1:length(tmp)) {
-      df[gset,]$highup <- sum(tmp[[gset]] %in% names(Pval[Pval < Pcutoff,]) &
-                                tmp[[gset]] %in% names(FC[FC > 0,]))  # Highly significant up
-      df[gset,]$highdown <- sum(tmp[[gset]] %in% names(Pval[Pval < Pcutoff,]) &
-                                  tmp[[gset]] %in% names(FC[FC < 0,]))  # Highly significant down
-      df[gset,]$lowup <- sum(tmp[[gset]] %in% names(Pval[Pval > Pcutoff,]) &
-                               tmp[[gset]] %in% names(FC[FC > 0,]))  # Low significant up
-      df[gset,]$lowdown <- sum(tmp[[gset]] %in% names(Pval[Pval > Pcutoff,]) &
-                                 tmp[[gset]] %in% names(FC[FC < 0,]))  # Low significant down
+  #merge the dataframes to include the rankScore information
+  df <- merge(df, df_rankScore)
+  colnames(df) <- c("geneset", "up", "dn", "tot", "rank")
+  
+  #Now count how many significative genes are up or down regulated in each geneset
+    #add additional columns in which to store number of significative up/down genes
+    df <- cbind(df, highup = NA, highdown = NA, lowup = NA, lowdown = NA) 
+
+    Pval <- resList$mean$geneLevelStats #extract the pvalues
+    FC <- resList$mean$directions #extract the directionality of fold change
+    GS <- resList$mean$gsc #extract the gene sets
+    tmp <- GS[names(GS) %in% df$geneset] #only keep gene sets present in our analysis
+    tmp <- tmp[order(names(tmp))] #sort them by name
+    
+    #populate the NAs with the actual values of how many genes are significantly up/dn
+    
+    for (i in 1:length(tmp)) {
+      #Highly significant up
+      df[i,]$highup <- sum(tmp[[i]] %in% names(Pval[Pval < Pcutoff,]) & tmp[[i]] %in% names(FC[FC > 0,]))
+      # Highly significant down
+      df[i,]$highdown <- sum(tmp[[i]] %in% names(Pval[Pval < Pcutoff,]) & tmp[[i]] %in% names(FC[FC < 0,]))  
+      # Low significant up
+      df[i,]$lowup <- sum(tmp[[i]] %in% names(Pval[Pval > Pcutoff,]) & tmp[[i]] %in% names(FC[FC > 0,]))
+      # Low significant down
+      df[i,]$lowdown <- sum(tmp[[i]] %in% names(Pval[Pval > Pcutoff,]) & tmp[[i]] %in% names(FC[FC < 0,]))  
     }
     
-    df$geneset <- factor(df$geneset, levels = df[order(df$up / df$dn),1])  # Order from mostly up to mostly down.
-    df$geneset<-gsub('(.{80})(.+)','\\1...',df$geneset)
-    
-    # Add ALL genes
-    df3 <- data.frame(geneset = 'All')
-    df3$geneset <- 'All'
-    df3$up <- sum(FC > 0)
-    df3$dn <- sum(FC < 0)
-    df3$tot <- length(FC)
-    df3$highup <- sum(Pval < Pcutoff & FC > 0) 
-    df3$highdown <- sum(Pval < Pcutoff & FC < 0) 
-    df3$lowup <- sum(Pval > Pcutoff & FC > 0) 
-    df3$lowdown <- sum(Pval > Pcutoff & FC < 0)
-    df3$rank <- ""
-    df<-rbind(df,df3)
-    
-    df2 <- gather(df[, c("geneset", "highup", "highdown", "lowup","lowdown")], "directAndSignif", "genes", 2:5)
-    
-    df2$geneset <-
-      factor(df2$geneset, levels = df2[order(df$up / df$dn),1])  # Order from mostly up to mostly down.
-    df2$directAndSignif <-
-      factor(df2$directAndSignif,
-             levels = c("highup", "lowup", "lowdown", "highdown")) # Pointless, order is not maintained by ggplot if stat="identity" is used
-    
-    # Very inelegant way to order significance and direction of changed genes, instead of order mentioned above
-    df2$order <- 0
-    df2$order[df2$directAndSignif == "highup"] <- 1
-    df2$order[df2$directAndSignif == "lowup"] <- 2
-    df2$order[df2$directAndSignif == "lowdown"] <- 3
-    df2$order[df2$directAndSignif == "highdown"] <- 4
-    df2 <- df2[order(df2$order),]
-    
-    grht <- 3 + (dim(df)[1] * 0.5) # Determine height of output graph in cm, 3 cm and additional 0.5 per GO term
-    
+  #Add statistics for All genes
+  df_all <- data.frame(geneset = 'All',
+                       up = sum(FC > 0), 
+                       dn = sum(FC < 0),
+                       tot = length(FC),
+                       highup = sum(Pval < Pcutoff & FC > 0),
+                       highdown = sum(Pval < Pcutoff & FC < 0),
+                       lowup = sum(Pval > Pcutoff & FC > 0),
+                       lowdown = sum(Pval > Pcutoff & FC < 0),
+                       rank = "")
+  df <- rbind(df,df_all)
+  
+  
+  #Plot
+    df_plot <- gather(df[, c("geneset", "highup", "highdown", "lowup","lowdown")], "directAndSignif", "genes", 2:5)
+
+    #Order things from most up to most down
+    df_plot$geneset <- factor(df_plot$geneset, levels = df_plot[order(df$up / df$dn),1])  #Order from mostly up to mostly down.
+    df_plot$directAndSignif <- factor(df_plot$directAndSignif, levels = c("highup", "lowup", "lowdown", "highdown"))
+
+    #Prepare the plot
     plot <-
-      ggplot(df2, aes(x = geneset, y = genes, fill = directAndSignif)) +
+      ggplot(df_plot, aes(x = geneset, y = genes, fill = directAndSignif)) +
       geom_bar(position = position_fill(reverse = TRUE), stat = "identity") +
       coord_flip() +
+      scale_x_discrete(labels = label_wrap(50)) +
       scale_y_continuous(labels = percent_format(), breaks = c(0,0.25, 0.5, 0.75, 1)) +
       scale_fill_manual(
         values = c("#963836", "#b57372", "#abbdd2", "#4682b4"),
@@ -151,7 +140,6 @@ consGSAplot <-
       theme(
         text = element_text(size = 11),
         legend.position = "bottom",
-        #legend.key.size = unit(7, "points"),
         axis.text = element_text(colour = "black"),
         panel.grid = element_blank(),
         line = element_line(size = 0.25),
@@ -171,18 +159,14 @@ consGSAplot <-
             y = -0.04, label = rank),
         inherit.aes = FALSE,
         size = 3) +
-      labs(title=title,subtitle="            <-- RankScore        /         total number of genes --> ")
+      labs(title = title,
+           subtitle="            <-- RankScore        /         total number of genes --> ")
+  
+
+  output = list(df = df,
+                plot = plot)
     
+  return(output)
     
-    if (savePlot == T) {
-      title = gsub("[[:punct:]]", "_", title)
-      plot + ggsave(
-        file = paste0("consGSAplot_", title, ".pdf"),
-        device = "pdf",
-        height = grht,
-        units = "cm"
-      )
-    }
-    return(plot)
   }
 
